@@ -1,6 +1,7 @@
 ﻿using CoreWebApp.Models;
 using CoreWebApp.Models.ViewModels;
 using CoreWebApp.Repository;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CoreWebApp.Controllers
@@ -15,13 +16,15 @@ namespace CoreWebApp.Controllers
             _employeeRepository = employeeRepository;
             _environment = environment;
         }
-
+        [Authorize(Roles = "Admin , User")]
         public IActionResult Index()
         {
             IEnumerable<Employee> list=_employeeRepository.GetAllEmployees().ToList();
             ViewBag.Title = "Employee List";
             return View(list);
         }
+
+        [Authorize(Roles = "Shefain")]
         public IActionResult Details(int id)
         {
             Employee model= _employeeRepository.GetEmployeeById(id);

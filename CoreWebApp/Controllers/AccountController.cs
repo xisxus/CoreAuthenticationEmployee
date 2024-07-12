@@ -1,5 +1,6 @@
 ﻿using CoreWebApp.Models;
 using CoreWebApp.Models.ViewModels;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 
@@ -9,11 +10,13 @@ namespace CoreWebApp.Controllers
     {
         private readonly UserManager<IdentityUser> _userManager;
         private readonly SignInManager<IdentityUser> _signInManager;
+        private readonly RoleManager<IdentityRole> _roleManager;
 
-        public AccountController(UserManager<IdentityUser> userManager, SignInManager<IdentityUser> signInManager)
+        public AccountController(UserManager<IdentityUser> userManager, SignInManager<IdentityUser> signInManager, RoleManager<IdentityRole> roleManager)
         {
             _userManager = userManager;
             _signInManager = signInManager;
+            _roleManager = roleManager;
         }
         [HttpPost]
         public async Task<IActionResult> Logout()
@@ -56,29 +59,115 @@ namespace CoreWebApp.Controllers
         {
             return View();
         }
-    
+
 
         [HttpPost]
         public async Task<IActionResult> Registration(RegisterViewModel model)
         {
             if (ModelState.IsValid)
             {
-                var user = new ApplicationUser
+                var user = new IdentityUser { UserName = model.Email, Email = model.Email };
+                var result = await _userManager.CreateAsync(user, model.Password);
+
+                if (result.Succeeded)
                 {
-                    UserName = model.Email,
-                    Email = model.Email
-                };
-                var result=await _userManager.CreateAsync(user,model.Password);
-                if(!result.Succeeded)
-                {
-                    foreach(var error in result.Errors)
+                    // Assign role to user
+                    if (!await _roleManager.RoleExistsAsync("User"))
                     {
-                        ModelState.AddModelError("", error.Description);
+                        await _roleManager.CreateAsync(new IdentityRole("User"));
                     }
+
+                    await _userManager.AddToRoleAsync(user, "User");
+
+                    // Sign in user after registration if needed
+                    // await _signInManager.SignInAsync(user, isPersistent: false);
+
+                    return RedirectToAction("Login", "Account");
                 }
-                
+
+                foreach (var error in result.Errors)
+                {
+                    ModelState.AddModelError(string.Empty, error.Description);
+                }
             }
+
             return View(model);
+        }
+
+        [HttpGet]
+        public IActionResult AssignRole()
+        {
+            var users = _userManager.Users.ToList();
+            return View(users);
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> AssignRole(string userId, string roleName)
+        {
+            var user = await _userManager.FindByIdAsync(userId);
+
+            if (user == null)
+            {
+                ViewBag.ErrorMessage = $"User with Id = {userId} cannot be found";
+                return View("NotFound");
+            }
+
+            var roleExists = await _roleManager.RoleExistsAsync(roleName);
+
+            if (!roleExists)
+            {
+                ViewBag.ErrorMessage = $"Role with Name = {roleName} cannot be found";
+                return View("NotFound");
+            }
+
+            var isInRole = await _userManager.IsInRoleAsync(user, roleName);
+
+            if (!isInRole)
+            {
+                var result = await _userManager.AddToRoleAsync(user, roleName);
+
+                if (result.Succeeded)
+                {
+                    // Redirect to user details page or another appropriate page
+                    return RedirectToAction("Index", "Home");
+                }
+
+                foreach (var error in result.Errors)
+                {
+                    ModelState.AddModelError(string.Empty, error.Description);
+                }
+            }
+
+            return RedirectToAction("Index", "Home"); // Redirect to home page on success
+        }
+
+        
+        public IActionResult UsersWithRoles()
+        {
+            var usersWithRoles = new List<UserWithRolesViewModel>();
+
+            var users = _userManager.Users.ToList();
+
+            foreach (var user in users)
+            {
+                var roles = _userManager.GetRolesAsync(user).Result;
+
+                var userWithRoles = new UserWithRolesViewModel
+                {
+                    UserId = user.Id,
+                    UserName = user.UserName,
+                    Roles = roles.ToList()
+                };
+
+                usersWithRoles.Add(userWithRoles);
+            }
+
+            return View(usersWithRoles);
+        }
+
+        public IActionResult AccessDenied()
+        {
+            return View();
         }
     }
 }

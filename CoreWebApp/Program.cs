@@ -16,6 +16,14 @@ builder.Services.AddIdentity<IdentityUser, IdentityRole>(options =>
     options.Password.RequireNonAlphanumeric = false;
 }).AddEntityFrameworkStores<AppDBContext>();
 
+
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    options.AccessDeniedPath = "/Account/AccessDenied";
+});
+
+
+
 var app = builder.Build();
 if (!app.Environment.IsDevelopment())
 {
@@ -25,9 +33,30 @@ else
 {
     app.UseDeveloperExceptionPage();
 }
+
+using (var scope = app.Services.CreateScope())
+{
+    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+
+    // Ensure roles exist
+    if (!await roleManager.RoleExistsAsync("Admin"))
+    {
+        await roleManager.CreateAsync(new IdentityRole("Admin"));
+    }
+
+    if (!await roleManager.RoleExistsAsync("Manager"))
+    {
+        await roleManager.CreateAsync(new IdentityRole("Manager"));
+    }
+}
+
+
+
+
 app.UseStaticFiles();
+app.UseRouting();
+
 app.UseAuthentication();
 app.UseAuthorization();
-app.UseRouting();
 app.MapControllerRoute(name: "Default", pattern: "{Controller=Account}/{action=Login}/{id?}");
 app.Run();
